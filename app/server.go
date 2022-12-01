@@ -23,32 +23,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	conn, listenerError := listener.Accept()
+	if listenerError != nil {
+		log.Fatal("error while accepting connection: ", listenerError)
+	}
 	for {
-		conn, listenerError := listener.Accept()
-		if listenerError != nil {
-			log.Fatal("error while accepting connection: ", listenerError)
-		}
-
-		go handleIncomingTCPRequest(&conn)
+		handleIncomingTCPRequest(conn)
 	}
 }
 
-func handleIncomingTCPRequest(connection *net.Conn) {
+func handleIncomingTCPRequest(connection net.Conn) {
 	buf := make([]byte, 1024)
 
-	_, readErr := (*connection).Read(buf)
+	_, readErr := connection.Read(buf)
 	if readErr != nil {
 		fmt.Println("Error occur while reading from connection: ", readErr.Error())
 	}
 
 	message := ifPingThenReturnMessage(string(buf[:]))
 	if message != "" {
-		(*connection).Write([]byte(message))
-	}
-
-	closedErr := (*connection).Close()
-	if closedErr != nil {
-		fmt.Println("Error occur while closing the connection: ", closedErr.Error())
+		connection.Write([]byte(message))
+		return
 	}
 }
 
@@ -69,8 +64,8 @@ func ifPingThenReturnMessage(message string) string {
 		contentArray := stringUtils.Split(message, "\r\n")
 		if len(contentArray) >= 4 && contentArray[2] == "ping" {
 			if len(contentArray) > 4 && contentArray[3] != "" {
-				intTotalArrayElem, _ := strconv.Atoi(stringUtils.Split(contentArray[1], "$")[1])
-				return "*" + strconv.Itoa(intTotalArrayElem-1) + stringUtils.Join(contentArray[3:], "")
+				intTotalArrayElems, _ := strconv.Atoi(stringUtils.Split(contentArray[1], "$")[1])
+				return "*" + strconv.Itoa(intTotalArrayElems-1) + stringUtils.Join(contentArray[3:], "")
 			} else {
 				return "+PONG\r\n"
 			}
