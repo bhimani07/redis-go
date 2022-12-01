@@ -5,7 +5,8 @@ import (
 	"log"
 	"net"
 	"os"
-	stringUtils "Strings"
+	"strconv"
+	stringUtils "strings"
 )
 
 const NETWORK_TYPE = "tcp"
@@ -16,15 +17,16 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 	listener, err := net.Listen(NETWORK_TYPE, HOST+":"+PORT)
+	defer listener.Close()
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
 	}
 
 	for {
-		conn, err1 := listener.Accept()
-		if err1 != nil {
-			log.Fatal(err1)
+		conn, listenerError := listener.Accept()
+		if listenerError != nil {
+			log.Fatal("error while accepting connection: ", listenerError)
 		}
 
 		go handleIncomingTCPRequest(&conn)
@@ -39,9 +41,9 @@ func handleIncomingTCPRequest(connection *net.Conn) {
 		fmt.Println("Error occur while reading from connection: ", readErr.Error())
 	}
 
-	message := string(buf[:])
-	if isPingMessage(message) {
-		handlePingMessage(connection, message)
+	message := ifPingThenReturnMessage(string(buf[:]))
+	if message != "" {
+		(*connection).Write([]byte(message))
 	}
 
 	closedErr := (*connection).Close()
@@ -50,25 +52,29 @@ func handleIncomingTCPRequest(connection *net.Conn) {
 	}
 }
 
-func isPingMessage(message string) bool {
-	return stringUtils.EqualFold("PING", message)
-}
+type MessageType string
 
-func handlePingMessage(connection *net.Conn, message string) {
-	messageArray := stringUtils.Split(message, " ")
-	if len(messageArray) > 2 {
-		fmt.Println("Incorrect PING message")
-		return
+const (
+	simpleStrings MessageType = "+"
+	errors                    = "-"
+	Integer                   = ":"
+	bulkStrings               = "$"
+	arrays                    = "*"
+)
+
+func ifPingThenReturnMessage(message string) string {
+	var messageType = MessageType(message[0])
+
+	if MessageType(messageType) == arrays {
+		contentArray := stringUtils.Split(message, "\r\n")
+		if len(contentArray) >= 4 && contentArray[2] == "ping" {
+			if len(contentArray) > 4 && contentArray[3] != "" {
+				intTotalArrayElem, _ := strconv.Atoi(stringUtils.Split(contentArray[1], "$")[1])
+				return "*" + strconv.Itoa(intTotalArrayElem-1) + stringUtils.Join(contentArray[3:], "")
+			} else {
+				return "+PONG\r\n"
+			}
+		}
 	}
-
-	_ = messageArray[:1]
-	clientMessage := stringUtils.Join(messageArray[1:], " ")
-
-	if len(clientMessage) == 0 {
-		(*connection).Write([]byte("PONG"))
-		return
-	}
-
-	(*connection).Write([]byte(clientMessage))
-	return
+	return ""
 }
