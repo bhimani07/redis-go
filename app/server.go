@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -16,6 +17,7 @@ const PORT = "6379"
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
+
 	listener, err := net.Listen(NETWORK_TYPE, HOST+":"+PORT)
 	defer listener.Close()
 	if err != nil {
@@ -23,27 +25,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	conn, listenerError := listener.Accept()
-	if listenerError != nil {
-		log.Fatal("error while accepting connection: ", listenerError)
-	}
 	for {
-		handleIncomingTCPRequest(conn)
+		conn, listenerError := listener.Accept()
+		if listenerError != nil {
+			log.Fatal("error while accepting connection: ", listenerError)
+		}
+		go handleIncomingTCPRequest(conn)
 	}
 }
 
 func handleIncomingTCPRequest(connection net.Conn) {
-	buf := make([]byte, 1024)
+	defer connection.Close()
 
-	_, readErr := connection.Read(buf)
-	if readErr != nil {
-		fmt.Println("Error occur while reading from connection: ", readErr.Error())
-	}
+	for {
+		buf := make([]byte, 1024)
+		if _, readErr := connection.Read(buf); readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+		}
 
-	message := ifPingThenReturnMessage(string(buf[:]))
-	if message != "" {
-		connection.Write([]byte(message))
-		return
+		message := ifPingThenReturnMessage(string(buf[:]))
+		if message != "" {
+			connection.Write([]byte(message))
+		}
 	}
 }
 
@@ -58,7 +63,7 @@ const (
 )
 
 func ifPingThenReturnMessage(message string) string {
-	var messageType = MessageType(message[0])
+	messageType := MessageType(message[0])
 
 	if MessageType(messageType) == arrays {
 		contentArray := stringUtils.Split(message, "\r\n")
