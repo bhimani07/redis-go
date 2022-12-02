@@ -19,6 +19,8 @@ type CommandType string
 const (
 	ping    CommandType = "ping"
 	echo                = "echo"
+	set                 = "set"
+	get                 = "get"
 	unknown             = "unknown"
 )
 
@@ -31,6 +33,8 @@ const (
 	bulkStrings                   = "$"
 	arrays                        = "*"
 )
+
+var keyStore = make(map[string]string)
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -63,12 +67,15 @@ func handleIncomingTCPRequest(connection net.Conn) {
 			}
 		}
 
-		fmt.Println("Command Type: ", determineCommandType(string(buf[:])))
 		switch determineCommandType(string(buf[:])) {
 		case ping:
 			connection.Write([]byte(buildPingResponse(string(buf[:]))))
 		case echo:
 			connection.Write([]byte(buildEchoResponse(string(buf[:]))))
+		case set:
+			connection.Write([]byte(buildSetResponse(string(buf[:]))))
+		case get:
+			connection.Write([]byte(buildGetResponse(string(buf[:]))))
 		case unknown:
 			fmt.Println("Unknown cmd received, exiting...")
 			os.Exit(1)
@@ -79,12 +86,18 @@ func handleIncomingTCPRequest(connection net.Conn) {
 func determineCommandType(message string) CommandType {
 	messageType := MessageDataType(message[0])
 
+	fmt.Println("Message: ", message)
+
 	if MessageDataType(messageType) == arrays {
 		contentArray := stringUtils.Split(message, "\r\n")
 		if CommandType(contentArray[2]) == ping {
 			return ping
 		} else if CommandType(contentArray[2]) == echo {
 			return echo
+		} else if CommandType(contentArray[2]) == set {
+			return set
+		} else if CommandType(contentArray[2]) == get {
+			return get
 		}
 	}
 	return unknown
@@ -109,4 +122,21 @@ func buildEchoResponse(message string) string {
 		response += "\r\n"
 	}
 	return response
+}
+
+func buildSetResponse(message string) string {
+	contentArray := stringUtils.Split(message, "\r\n")
+	key := contentArray[4]
+	val := contentArray[6]
+	keyStore[key] = val
+	return "+OK\r\n"
+}
+
+func buildGetResponse(message string) string {
+	contentArray := stringUtils.Split(message, "\r\n")
+	key := contentArray[4]
+	if val, ok := keyStore[key]; ok {
+		return "+" + val + "\r\n"
+	}
+	return "$-1\r\n"
 }
