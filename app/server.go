@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	stringUtils "strings"
+	"time"
 )
 
 const NETWORK_TYPE = "tcp"
@@ -35,6 +36,7 @@ const (
 )
 
 var keyStore = make(map[string]string)
+var expiryStore = make(map[string]time.Time)
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -128,6 +130,16 @@ func buildSetResponse(message string) string {
 	contentArray := stringUtils.Split(message, "\r\n")
 	key := contentArray[4]
 	val := contentArray[6]
+	var expiryMilli int
+
+	if len(contentArray) >= 10 {
+		expiryMilli, _ = strconv.Atoi(contentArray[10])
+	}
+
+	if expiryMilli != 0 {
+		expiryStore[key] = time.Now().Add(time.Millisecond * time.Duration(expiryMilli))
+	}
+
 	keyStore[key] = val
 	return "+OK\r\n"
 }
@@ -135,8 +147,16 @@ func buildSetResponse(message string) string {
 func buildGetResponse(message string) string {
 	contentArray := stringUtils.Split(message, "\r\n")
 	key := contentArray[4]
+
 	if val, ok := keyStore[key]; ok {
+		if exp, ok1 := expiryStore[key]; ok1 {
+			if exp.Before(time.Now()) {
+				delete(expiryStore, key)
+				return "$-1\r\n"
+			}
+		}
 		return "+" + val + "\r\n"
 	}
+
 	return "$-1\r\n"
 }
